@@ -3,15 +3,29 @@
 namespace Dtc\QueueBundle\Command;
 
 use Dtc\QueueBundle\Exception\WorkerNotRegisteredException;
-use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
+use Dtc\QueueBundle\Manager\JobManagerInterface;
+use Dtc\QueueBundle\Manager\WorkerManager;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class CreateJobCommand extends ContainerAwareCommand
+class CreateJobCommand extends Command
 {
+    private $jobManager;
+
+    private $workerManager;
+
     protected static $defaultName = 'dtc:queue:create_job';
+
+    public function __construct(JobManagerInterface $jobManager, WorkerManager $workerManager, string $name = null)
+    {
+        $this->jobManager = $jobManager;
+        $this->workerManager = $workerManager;
+
+        parent::__construct($name);
+    }
 
     protected function configure()
     {
@@ -85,16 +99,12 @@ class CreateJobCommand extends ContainerAwareCommand
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $container = $this->getContainer();
-        $jobManager = $container->get('dtc_queue.manager.job');
-        $workerManager = $container->get('dtc_queue.manager.worker');
-
         $workerName = $input->getArgument('worker_name');
         $methodName = $input->getArgument('method');
 
         $args = $this->getArgs($input);
 
-        $worker = $workerManager->getWorker($workerName);
+        $worker = $this->workerManager->getWorker($workerName);
 
         if (!$worker) {
             throw new WorkerNotRegisteredException("Worker `{$workerName}` is not registered.");
@@ -109,7 +119,7 @@ class CreateJobCommand extends ContainerAwareCommand
         $job->setMethod($methodName);
         $job->setArgs($args);
 
-        $jobManager->save($job);
+        $this->jobManager->save($job);
     }
 
     protected function getArgs(InputInterface $input)
