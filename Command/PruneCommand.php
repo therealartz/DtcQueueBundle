@@ -3,38 +3,16 @@
 namespace Dtc\QueueBundle\Command;
 
 use Dtc\QueueBundle\Exception\UnsupportedException;
-use Dtc\QueueBundle\Manager\JobManagerInterface;
-use Dtc\QueueBundle\Manager\JobTimingManager;
-use Dtc\QueueBundle\Manager\RunManager;
 use Dtc\QueueBundle\Util\Util;
-use Symfony\Component\Console\Command\Command;
+use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class PruneCommand extends Command
+class PruneCommand extends ContainerAwareCommand
 {
     const OLDER_MESSAGE = '<int>[d|m|y|h|i|s] Specify how old the jobs should (defaults to timestamp unless a quantifier is specified [d_ays, m_onths, y_years, h_ours, i_minutes, s_econds';
-
-    private $jobManager;
-
-    private $runManager;
-
-    private $jobTimingManager;
-
-    public function __construct(
-        JobManagerInterface $jobManager,
-        RunManager $runManager,
-        JobTimingManager $jobTimingManager,
-        string $name = null
-    ) {
-        $this->jobManager = $jobManager;
-        $this->runManager = $runManager;
-        $this->jobTimingManager = $jobTimingManager;
-
-        parent::__construct($name);
-    }
 
     protected function configure()
     {
@@ -57,7 +35,9 @@ class PruneCommand extends Command
                 $this->pruneExceptionJobs($output);
                 break;
             case 'expired':
-                $count = $this->jobManager->jobManager->pruneExpiredJobs();
+                $container = $this->getContainer();
+                $jobManager = $container->get('dtc_queue.manager.job');
+                $count = $jobManager->pruneExpiredJobs();
                 $output->writeln("$count Expired Job(s) pruned");
                 break;
             default:
@@ -69,20 +49,24 @@ class PruneCommand extends Command
 
     protected function pruneExceptionJobs(OutputInterface $output)
     {
-        $count = $this->jobManager->pruneExceptionJobs();
+        $container = $this->getContainer();
+        $jobManager = $container->get('dtc_queue.manager.job');
+        $count = $jobManager->pruneExceptionJobs();
         $output->writeln("$count Job(s) with status 'exception' pruned");
     }
 
     public function executeStalledOther(InputInterface $input, OutputInterface $output)
     {
+        $container = $this->getContainer();
+        $jobManager = $container->get('dtc_queue.manager.job');
         $type = $input->getArgument('type');
         switch ($type) {
             case 'stalled':
-                $count = $this->jobManager->pruneStalledJobs();
+                $count = $jobManager->pruneStalledJobs();
                 $output->writeln("$count Stalled Job(s) pruned");
                 break;
             case 'stalled_runs':
-                $count = $this->runManager->pruneStalledRuns();
+                $count = $container->get('dtc_queue.manager.run')->pruneStalledRuns();
                 $output->writeln("$count Stalled Job(s) pruned");
                 break;
             default:
@@ -151,18 +135,19 @@ class PruneCommand extends Command
      */
     protected function pruneOlderThan($type, \DateTime $olderThan, OutputInterface $output)
     {
+        $container = $this->getContainer();
         $typeName = null;
         switch ($type) {
             case 'old':
-                $count = $this->jobManager->pruneArchivedJobs($olderThan);
+                $count = $container->get('dtc_queue.manager.job')->pruneArchivedJobs($olderThan);
                 $typeName = 'Job';
                 break;
             case 'old_runs':
-                $count = $this->runManager->pruneArchivedRuns($olderThan);
+                $count = $container->get('dtc_queue.manager.run')->pruneArchivedRuns($olderThan);
                 $typeName = 'Run';
                 break;
             case 'old_job_timings':
-                $count = $this->jobTimingManager->pruneJobTimings($olderThan);
+                $count = $container->get('dtc_queue.manager.job_timing')->pruneJobTimings($olderThan);
                 $typeName = 'Job Timing';
                 break;
             default:

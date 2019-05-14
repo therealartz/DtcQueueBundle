@@ -2,22 +2,12 @@
 
 namespace Dtc\QueueBundle\Command;
 
-use Dtc\QueueBundle\Manager\JobManagerInterface;
-use Symfony\Component\Console\Command\Command;
+use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class CountCommand extends Command
+class CountCommand extends ContainerAwareCommand
 {
-    private $jobManager;
-
-    public function __construct(JobManagerInterface $jobManager, string $name = null)
-    {
-        $this->jobManager = $jobManager;
-
-        parent::__construct($name);
-    }
-
     protected function configure()
     {
         $this
@@ -27,8 +17,11 @@ class CountCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $waitingCount = $this->jobManager->getWaitingJobCount();
-        $status = $this->jobManager->getStatus();
+        $container = $this->getContainer();
+        $jobManager = $container->get('dtc_queue.manager.job');
+
+        $waitingCount = $jobManager->getWaitingJobCount();
+        $status = $jobManager->getStatus();
 
         $firstJob = key($status);
         if ($firstJob) {
@@ -69,8 +62,7 @@ class CountCommand extends Command
     }
 
     /**
-     * @param array $initialKeys
-     * @param array $headingArgs
+     * @param array  $initialKeys
      * @param string $format
      */
     private function formatHeadings(array $initialKeys, array &$headingArgs, &$format)

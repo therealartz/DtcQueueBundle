@@ -2,34 +2,22 @@
 
 namespace Dtc\QueueBundle\Command;
 
-use Dtc\QueueBundle\Manager\JobManagerInterface;
+use Dtc\QueueBundle\Exception\ClassNotSubclassException;
+use Dtc\QueueBundle\Model\Job;
 use Dtc\QueueBundle\Run\Loop;
 use Dtc\QueueBundle\Util\Util;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\Console\Command\Command;
+use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\HttpKernel\Kernel;
 
-class RunCommand extends Command
+class RunCommand extends ContainerAwareCommand
 {
     protected $loggerPrivate = false;
     protected $nanoSleepOption = null;
-
-    private $jobManager;
-
-    private $loop;
-
-    public function __construct(JobManagerInterface $jobManager, Loop $loop, LoggerInterface $logger, string $name = null)
-    {
-        $this->jobManager = $jobManager;
-        $this->loop = $loop;
-        $this->loop->setLogger($logger);
-
-        parent::__construct($name);
-    }
 
     protected function symfonyDetect()
     {
@@ -113,30 +101,35 @@ class RunCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $start = microtime(true);
-        $this->loop->setOutput($output);
+        $container = $this->getContainer();
+        $loop = $container->get('dtc_queue.run.loop');
+        $loop->setOutput($output);
         $workerName = $input->getArgument('worker-name');
         $methodName = $input->getArgument('method');
         $maxCount = $input->getOption('max-count');
         $duration = $input->getOption('duration');
         $processTimeout = $input->getOption('timeout');
         $nanoSleep = $input->getOption('nano-sleep');
-        $disableGc = $input->hasOption('disable-gc') ? $input->getOption('disable-gc') : false;
+        $loggerService = !$this->loggerPrivate ? $input->getOption('logger', null) : null;
+        $disableGc = $input->getOption('disable-gc', false);
         $this->setGc($disableGc);
+
+        $this->setLoggerService($loop, $loggerService);
 
         $maxCount = Util::validateIntNull('max_count', $maxCount, 32);
         $duration = Util::validateIntNull('duration', $duration, 32);
         $nanoSleep = Util::validateIntNull('nano_sleep', $nanoSleep, 63);
         $processTimeout = Util::validateIntNull('timeout', $processTimeout, 32);
-        $this->loop->checkMaxCountDuration($maxCount, $duration, $processTimeout);
+        $loop->checkMaxCountDuration($maxCount, $duration, $processTimeout);
 
         // Check to see if there are other instances
         set_time_limit($processTimeout); // Set timeout on the process
 
         if ($jobId = $input->getOption('id')) {
-            $this->loop->runJobById($start, $jobId); // Run a single job
+            return $loop->runJobById($start, $jobId); // Run a single job
         }
 
-        return $this->loop->runLoop($start, $workerName, $methodName, $maxCount, $duration, $nanoSleep);
+        return $loop->runLoop($start, $workerName, $methodName, $maxCount, $duration, $nanoSleep);
     }
 
     /**
@@ -155,5 +148,23 @@ class RunCommand extends Command
         if (!gc_enabled()) {
             gc_enable();
         }
+    }
+
+    protected function setLoggerService(Loop $loop, $loggerService)
+    {
+        if (!$loggerService) {
+            return;
+        }
+
+        $container = $this->getContainer();
+        if (!$container->has($loggerService)) {
+            return;
+        }
+
+        $logger = $container->get($loggerService);
+        if (!$logger instanceof LoggerInterface) {
+            throw new ClassNotSubclassException("$loggerService must be instance of Psr\\Log\\LoggerInterface");
+        }
+        $loop->setLogger($logger);
     }
 }

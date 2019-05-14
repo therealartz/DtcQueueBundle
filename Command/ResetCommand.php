@@ -2,22 +2,12 @@
 
 namespace Dtc\QueueBundle\Command;
 
-use Dtc\QueueBundle\Manager\JobManagerInterface;
-use Symfony\Component\Console\Command\Command;
+use Symfony\Bundle\FrameworkBundle\Command\ContainerAwareCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class ResetCommand extends Command
+class ResetCommand extends ContainerAwareCommand
 {
-    private $jobManager;
-
-    public function __construct(JobManagerInterface $jobManager, string $name = null)
-    {
-        $this->jobManager = $jobManager;
-
-        parent::__construct($name);
-    }
-
     protected function configure()
     {
         $this
@@ -27,8 +17,10 @@ class ResetCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $countException = $this->jobManager->resetExceptionJobs();
-        $countStalled = $this->jobManager->resetStalledJobs();
+        $container = $this->getContainer();
+        $jobManager = $container->get('dtc_queue.manager.job');
+        $countException = $jobManager->resetExceptionJobs();
+        $countStalled = $jobManager->resetStalledJobs();
         $output->writeln("$countException job(s) in status 'exception' reset");
         $output->writeln("$countStalled job(s) stalled (in status 'running') reset");
     }
